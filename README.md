@@ -1,15 +1,11 @@
 # event-pipeline
 
-## Build
-
+**API:**
 ```bash
-go build -o event-pipeline .
+cd api && go run ./cmd/server
 ```
 
-## Run
-
+**Pipeline library:**
 ```bash
-./event-pipeline           # API server on :8080
-./event-pipeline -m api    # same as default
-./event-pipeline -m pipeline
+cd pipeline && go build .
 ```
