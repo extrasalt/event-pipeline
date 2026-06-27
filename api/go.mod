@@ -1,4 +1,4 @@
-module github.com/extrasalt/event-pipeline
+module github.com/extrasalt/event-pipeline/api
 
 go 1.25.0
 
@@ -35,3 +35,5 @@ require (
 	golang.org/x/text v0.34.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 )
+
+replace github.com/extrasalt/event-pipeline/pipeline => ../pipeline
