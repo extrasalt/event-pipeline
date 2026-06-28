@@ -1,20 +1,76 @@
-import { useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useCartStore } from "@/stores/cartStore";
-import { getProductById, StarRating } from "@/lib/products";
+import { StarRating } from "@/lib/products";
 import { ShoppingCart, ChevronLeft, Loader2, PackageOpen } from "lucide-react";
 
 export default function ProductDetail() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const addItem = useCartStore((s) => s.addItem);
+  const [product, setProduct] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [isAdding, setIsAdding] = useState(false);
 
-  const product = getProductById(Number(id));
+  useEffect(() => {
+    const load = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/products/${id}`);
+        if (res.status === 404) {
+          setProduct(null);
+          return;
+        }
+        if (!res.ok) throw new Error("Failed to load product");
+        setProduct(await res.json());
+      } catch {
+        setError("Failed to load product. Please try again.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
+  }, [id]);
+
+  if (isLoading) {
+    return (
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="grid gap-10 md:grid-cols-2">
+          <div className="aspect-square animate-pulse rounded-xl bg-muted" />
+          <div className="space-y-6">
+            <div className="h-4 w-20 animate-pulse rounded bg-muted" />
+            <div className="h-8 w-3/4 animate-pulse rounded bg-muted" />
+            <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
+            <div className="h-10 w-1/4 animate-pulse rounded bg-muted" />
+            <div className="h-20 w-full animate-pulse rounded bg-muted" />
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="flex flex-col items-center justify-center gap-4 py-20">
+          <PackageOpen className="h-16 w-16 text-muted-foreground" />
+          <h1 className="text-2xl font-bold">Error loading product</h1>
+          <p className="text-muted-foreground">{error}</p>
+          <Button asChild>
+            <Link to="/products">
+              <ChevronLeft className="mr-2 h-4 w-4" />
+              Back to Products
+            </Link>
+          </Button>
+        </div>
+      </main>
+    );
+  }
 
   if (!product) {
     return (

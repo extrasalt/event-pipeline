@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useCartStore } from "@/stores/cartStore";
-import { PRODUCTS, StarRating } from "@/lib/products";
+import { StarRating } from "@/lib/products";
 import { ShoppingCart, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 
 export default function Products() {
@@ -18,8 +18,10 @@ export default function Products() {
     setIsLoading(true);
     setError(null);
     try {
-      await new Promise((r) => setTimeout(r, 600));
-      setProducts(PRODUCTS);
+      const res = await fetch("/api/products");
+      if (!res.ok) throw new Error("Failed to load products");
+      const data = await res.json();
+      setProducts(data);
     } catch {
       setError("Failed to load products. Please try again.");
     } finally {
