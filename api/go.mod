@@ -2,7 +2,10 @@ module github.com/extrasalt/event-pipeline/api
 
 go 1.25.0
 
-require github.com/gin-gonic/gin v1.12.0
+require (
+	github.com/extrasalt/event-pipeline/pipeline v0.0.0-00010101000000-000000000000
+	github.com/gin-gonic/gin v1.12.0
+)
 
 require (
 	github.com/bytedance/gopkg v0.1.3 // indirect
