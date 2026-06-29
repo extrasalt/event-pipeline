@@ -31,3 +31,5 @@ node_modules/
 links/
 
 ecommerce/ecommerce
+ecommerce/app/test-results/.last-run.json
+ecommerce/tests/test-results/.last-run.json
