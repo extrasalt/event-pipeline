@@ -260,8 +260,14 @@ func (s *Store) Close() {
 type Analytics struct {
 	TotalEvents      uint64            `json:"total_events"`
 	EventsByType     map[string]uint64 `json:"events_by_type"`
+	EventsOverTime   []TimeBucket       `json:"events_over_time"`
 	AvgCaptureTimeMs float64           `json:"avg_capture_time_ms"`
 	AvgEventParams   float64           `json:"avg_event_params"`
+}
+
+type TimeBucket struct {
+	Date  string `json:"date"`
+	Count uint64 `json:"count"`
 }
 
 func (s *Store) Snapshot(ctx context.Context) (Analytics, error) {
@@ -285,6 +291,19 @@ func (s *Store) Snapshot(ctx context.Context) (Analytics, error) {
 			return a, fmt.Errorf("scan type row: %w", err)
 		}
 		a.EventsByType[typ] = cnt
+	}
+
+	rows, err = s.conn.Query(ctx, "SELECT toDate(timestamp) AS d, count() FROM "+s.table+" GROUP BY d ORDER BY d")
+	if err != nil {
+		return a, fmt.Errorf("events over time: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var tb TimeBucket
+		if err := rows.Scan(&tb.Date, &tb.Count); err != nil {
+			return a, fmt.Errorf("scan time bucket: %w", err)
+		}
+		a.EventsOverTime = append(a.EventsOverTime, tb)
 	}
 
 	row = s.conn.QueryRow(ctx, "SELECT avg(dateDiff('millisecond', timestamp, inserted_at)) FROM "+s.table)
