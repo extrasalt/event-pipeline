@@ -15,6 +15,7 @@ type TrackingEvent struct {
 	Timestamp time.Time      `json:"timestamp"`
 	Data      map[string]any `json:"data"`
 	UserAgent string         `json:"user_agent"`
+	IP        string         `json:"-"`
 	Timezone  string         `json:"timezone"`
 	Location  string         `json:"location"`
 	SessionID string         `json:"session_id"`
@@ -40,6 +41,9 @@ var trackingPipeline = pipeline.Pipeline[*TrackingEvent]{
 		pipeline.Map("normalize", func(e *TrackingEvent) (*TrackingEvent, error) {
 			if len(e.UserAgent) > 500 {
 				e.UserAgent = e.UserAgent[:500]
+			}
+			if len(e.IP) > 45 {
+				e.IP = e.IP[:45]
 			}
 			return e, nil
 		}),

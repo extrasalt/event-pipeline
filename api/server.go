@@ -40,6 +40,11 @@ func NewServer(store *Store) *gin.Engine {
 			return
 		}
 
+		clientIP := c.ClientIP()
+		for _, e := range events {
+			e.IP = clientIP
+		}
+
 		processed, meta, err := store.ProcessEvents(context.Background(), events)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

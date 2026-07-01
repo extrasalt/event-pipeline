@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS default.events (
     timestamp   DateTime64(3),
     data        String,
     user_agent  String,
+    ip          String,
     timezone    String,
     location    String,
     session_id  String,
