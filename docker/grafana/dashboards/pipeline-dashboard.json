@@ -1,0 +1,61 @@
+{
+  "title": "Pipeline & Events",
+  "uid": "pipeline-events",
+  "schemaVersion": 39,
+  "version": 1,
+  "timezone": "browser",
+  "panels": [
+    {
+      "title": "Insert Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "rate(clickhouse_inserts_total[1m])",
+          "legendFormat": "inserts/s"
+        }
+      ]
+    },
+    {
+      "title": "Insert Latency (p50 / p90 / p99)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(clickhouse_insert_latency_seconds_bucket[1m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.90, rate(clickhouse_insert_latency_seconds_bucket[1m]))",
+          "legendFormat": "p90"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(clickhouse_insert_latency_seconds_bucket[1m]))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "title": "Error Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "targets": [
+        {
+          "expr": "rate(clickhouse_insert_errors_total[1m])",
+          "legendFormat": "errors/s"
+        }
+      ]
+    },
+    {
+      "title": "Queue Depth",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "clickhouse_queue_depth",
+          "legendFormat": "queued"
+        }
+      ]
+    }
+  ]
+}
