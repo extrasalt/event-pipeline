@@ -5,13 +5,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// NewServer creates a Gin engine with the following routes:
-//
-//	GET  /health         — {"status":"ok"}
-//	POST /track/events   — ingest tracking events through the pipeline
-//	GET  /api/analytics  — analytics snapshot
 func NewServer(store *Store) *gin.Engine {
 	r := gin.Default()
 
@@ -41,8 +37,15 @@ func NewServer(store *Store) *gin.Engine {
 	})
 
 	r.GET("/api/analytics", func(c *gin.Context) {
-		c.JSON(http.StatusOK, store.Snapshot())
+		snap, err := store.Snapshot(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, snap)
 	})
+
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	return r
 }
