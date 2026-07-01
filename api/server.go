@@ -5,15 +5,29 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// NewServer creates a Gin engine with the following routes:
-//
-//	GET  /health         — {"status":"ok"}
-//	POST /track/events   — ingest tracking events through the pipeline
-//	GET  /api/analytics  — analytics snapshot
+func corsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		origin := c.GetHeader("Origin")
+		if origin != "" {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Access-Control-Allow-Credentials", "true")
+		}
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
+	}
+}
+
 func NewServer(store *Store) *gin.Engine {
 	r := gin.Default()
+	r.Use(corsMiddleware())
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -41,8 +55,15 @@ func NewServer(store *Store) *gin.Engine {
 	})
 
 	r.GET("/api/analytics", func(c *gin.Context) {
-		c.JSON(http.StatusOK, store.Snapshot())
+		snap, err := store.Snapshot(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, snap)
 	})
+
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	return r
 }
