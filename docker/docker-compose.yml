@@ -8,6 +8,30 @@ services:
       - ./clickhouse/init:/docker-entrypoint-initdb.d
       - clickhouse-data:/var/lib/clickhouse
 
+  api:
+    build:
+      context: ..
+      dockerfile: api/Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "9000"
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_TABLE: events
+    depends_on:
+      clickhouse:
+        condition: service_started
+
+  ecommerce:
+    build:
+      context: ..
+      dockerfile: ecommerce/Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      - api
+
   prometheus:
     image: prom/prometheus
     ports:
