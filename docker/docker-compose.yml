@@ -19,6 +19,8 @@ services:
       CLICKHOUSE_PORT: "9000"
       CLICKHOUSE_DB: default
       CLICKHOUSE_TABLE: events
+      CLICKHOUSE_USER: analytics
+      CLICKHOUSE_PASSWORD: ""
     depends_on:
       clickhouse:
         condition: service_started
