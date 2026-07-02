@@ -59,7 +59,15 @@ func NewServer(store *Store) *gin.Engine {
 		})
 	})
 
-	r.GET("/api/analytics", func(c *gin.Context) {
+	auth := r.Group("/api/auth")
+	{
+		auth.POST("/signup", handleSignup)
+		auth.POST("/login", handleLogin)
+		auth.POST("/logout", handleLogout)
+		auth.GET("/me", authMiddleware(), handleMe)
+	}
+
+	r.GET("/api/analytics", authMiddleware(), func(c *gin.Context) {
 		snap, err := store.Snapshot(c.Request.Context())
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

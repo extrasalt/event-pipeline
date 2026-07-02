@@ -21,6 +21,8 @@ type Config struct {
 	Port          string
 	Database      string
 	Table         string
+	User          string
+	Password      string
 	BatchSize     int
 	FlushInterval time.Duration
 	MaxRetries    int
@@ -55,6 +57,8 @@ func ConfigFromEnv() Config {
 		Port:          getEnv("CLICKHOUSE_PORT", "9000"),
 		Database:      getEnv("CLICKHOUSE_DB", "default"),
 		Table:         getEnv("CLICKHOUSE_TABLE", "events"),
+		User:          getEnv("CLICKHOUSE_USER", ""),
+		Password:      getEnv("CLICKHOUSE_PASSWORD", ""),
 		BatchSize:     getInt("CLICKHOUSE_BATCH_SIZE", 10000),
 		FlushInterval: getDuration("CLICKHOUSE_FLUSH_INTERVAL", 1*time.Second),
 		MaxRetries:    getInt("CLICKHOUSE_MAX_RETRIES", 3),
@@ -81,7 +85,11 @@ type Store struct {
 func NewStore(ctx context.Context, cfg Config) (*Store, error) {
 	conn, err := clickhouse.Open(&clickhouse.Options{
 		Addr: []string{cfg.Host + ":" + cfg.Port},
-		Auth: clickhouse.Auth{Database: cfg.Database},
+		Auth: clickhouse.Auth{
+			Database: cfg.Database,
+			Username: cfg.User,
+			Password: cfg.Password,
+		},
 		Settings: map[string]any{
 			"async_insert":              1,
 			"wait_for_async_insert":     0,
@@ -90,8 +98,18 @@ func NewStore(ctx context.Context, cfg Config) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("clickhouse connect: %w", err)
 	}
-	if err := conn.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("clickhouse ping: %w", err)
+	// Retry ping with backoff to allow ClickHouse to become ready
+	var pingErr error
+	for i := range 10 {
+		if pingErr = conn.Ping(ctx); pingErr == nil {
+			break
+		}
+		if i < 9 {
+			time.Sleep(time.Duration(i+1) * time.Second)
+		}
+	}
+	if pingErr != nil {
+		return nil, fmt.Errorf("clickhouse ping: %w", pingErr)
 	}
 	if err := conn.Exec(ctx, fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS %s (
@@ -164,6 +182,7 @@ func (s *Store) ProcessEvents(ctx context.Context, events []*TrackingEvent) ([]*
 		case s.events <- e:
 		default:
 			s.insertErrs.Inc()
+			fmt.Printf("store: event queue full, dropping %s\n", e.ID)
 		}
 	}
 	s.queueDepth.Set(float64(len(s.events)))
@@ -202,6 +221,7 @@ func (s *Store) flush(events []*TrackingEvent) {
 	err := s.insertWithRetry(context.Background(), events)
 	if err != nil {
 		s.insertErrs.Inc()
+		fmt.Printf("store flush error: %v\n", err)
 		return
 	}
 	s.inserts.Inc()
@@ -229,7 +249,7 @@ func backoff(attempt int) time.Duration {
 }
 
 func (s *Store) insertBatch(ctx context.Context, events []*TrackingEvent) error {
-	batch, err := s.conn.PrepareBatch(ctx, "INSERT INTO "+s.table)
+	batch, err := s.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s (id, type, timestamp, data, user_agent, ip, timezone, location, session_id, churn_prob, param_count)", s.table))
 	if err != nil {
 		return fmt.Errorf("prepare: %w", err)
 	}
@@ -302,9 +322,11 @@ func (s *Store) Snapshot(ctx context.Context) (Analytics, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var tb TimeBucket
-		if err := rows.Scan(&tb.Date, &tb.Count); err != nil {
+		var d time.Time
+		if err := rows.Scan(&d, &tb.Count); err != nil {
 			return a, fmt.Errorf("scan time bucket: %w", err)
 		}
+		tb.Date = d.Format("2006-01-02")
 		a.EventsOverTime = append(a.EventsOverTime, tb)
 	}
 
