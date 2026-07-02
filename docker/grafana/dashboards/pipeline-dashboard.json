@@ -2,7 +2,7 @@
   "title": "Pipeline & Events",
   "uid": "pipeline-events",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 3,
   "timezone": "browser",
   "panels": [
     {
@@ -11,7 +11,7 @@
       "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
       "targets": [
         {
-          "expr": "rate(clickhouse_inserts_total[1m])",
+          "expr": "rate(chdb_inserts_total[1m])",
           "legendFormat": "inserts/s"
         }
       ]
@@ -22,15 +22,15 @@
       "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, rate(clickhouse_insert_latency_seconds_bucket[1m]))",
+          "expr": "histogram_quantile(0.50, rate(chdb_insert_latency_seconds_bucket[1m]))",
           "legendFormat": "p50"
         },
         {
-          "expr": "histogram_quantile(0.90, rate(clickhouse_insert_latency_seconds_bucket[1m]))",
+          "expr": "histogram_quantile(0.90, rate(chdb_insert_latency_seconds_bucket[1m]))",
           "legendFormat": "p90"
         },
         {
-          "expr": "histogram_quantile(0.99, rate(clickhouse_insert_latency_seconds_bucket[1m]))",
+          "expr": "histogram_quantile(0.99, rate(chdb_insert_latency_seconds_bucket[1m]))",
           "legendFormat": "p99"
         }
       ]
@@ -41,7 +41,7 @@
       "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
       "targets": [
         {
-          "expr": "rate(clickhouse_insert_errors_total[1m])",
+          "expr": "rate(chdb_insert_errors_total[1m])",
           "legendFormat": "errors/s"
         }
       ]
@@ -52,7 +52,7 @@
       "gridPos": {"h": 6, "w": 6, "x": 0, "y": 8},
       "targets": [
         {
-          "expr": "clickhouse_queue_depth",
+          "expr": "chdb_queue_depth",
           "legendFormat": "queued"
         }
       ]
@@ -64,12 +64,10 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "ClickHouse"
+            "type": "grafana-json-datasource",
+            "uid": "PIPELINE_API"
           },
-          "rawSql": true,
-          "query": "SELECT toDate(timestamp) AS t, count() AS c FROM default.events GROUP BY t ORDER BY t",
-          "format": "time_series",
+          "queryParams": "metric=events_over_time",
           "refId": "A"
         }
       ]
@@ -81,12 +79,10 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "ClickHouse"
+            "type": "grafana-json-datasource",
+            "uid": "PIPELINE_API"
           },
-          "rawSql": true,
-          "query": "SELECT type, count() AS c FROM default.events GROUP BY type ORDER BY c DESC",
-          "format": "table",
+          "queryParams": "metric=events_by_type",
           "refId": "A"
         }
       ],
@@ -104,12 +100,10 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "ClickHouse"
+            "type": "grafana-json-datasource",
+            "uid": "PIPELINE_API"
           },
-          "rawSql": true,
-          "query": "SELECT count() FROM default.events",
-          "format": "table",
+          "queryParams": "metric=total_events",
           "refId": "A"
         }
       ]
@@ -121,12 +115,10 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "ClickHouse"
+            "type": "grafana-json-datasource",
+            "uid": "PIPELINE_API"
           },
-          "rawSql": true,
-          "query": "SELECT round(avg(dateDiff('millisecond', timestamp, inserted_at)), 2) FROM default.events",
-          "format": "table",
+          "queryParams": "metric=avg_capture_time_ms",
           "refId": "A"
         }
       ]
@@ -138,12 +130,10 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "ClickHouse"
+            "type": "grafana-json-datasource",
+            "uid": "PIPELINE_API"
           },
-          "rawSql": true,
-          "query": "SELECT round(avg(param_count), 2) FROM default.events",
-          "format": "table",
+          "queryParams": "metric=avg_event_params",
           "refId": "A"
         }
       ]

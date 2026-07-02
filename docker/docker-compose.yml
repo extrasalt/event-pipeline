@@ -1,13 +1,4 @@
 services:
-  clickhouse:
-    image: clickhouse/clickhouse-server:latest
-    ports:
-      - "9000:9000"
-      - "8123:8123"
-    volumes:
-      - ./clickhouse/init:/docker-entrypoint-initdb.d
-      - clickhouse-data:/var/lib/clickhouse
-
   api:
     build:
       context: ..
@@ -15,15 +6,10 @@ services:
     ports:
       - "8081:8081"
     environment:
-      CLICKHOUSE_HOST: clickhouse
-      CLICKHOUSE_PORT: "9000"
-      CLICKHOUSE_DB: default
-      CLICKHOUSE_TABLE: events
-      CLICKHOUSE_USER: analytics
-      CLICKHOUSE_PASSWORD: ""
-    depends_on:
-      clickhouse:
-        condition: service_started
+      CHDB_DATA_PATH: /data
+      CHDB_TABLE: events
+    volumes:
+      - api-data:/data
 
   ecommerce:
     build:
@@ -31,8 +17,6 @@ services:
       dockerfile: ecommerce/Dockerfile
     ports:
       - "8080:8080"
-    depends_on:
-      - api
 
   prometheus:
     image: prom/prometheus
@@ -47,10 +31,9 @@ services:
       - "3000:3000"
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
     volumes:
-      - ./grafana/datasources:/etc/grafana/provisioning/datasources
       - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
 
 volumes:
-  clickhouse-data:
+  api-data:
