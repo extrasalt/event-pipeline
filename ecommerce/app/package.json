@@ -24,7 +24,8 @@
     "build": "vp build",
     "lint": "vp lint",
     "preview": "vp preview",
-    "test:e2e": "playwright test --config=../tests/playwright.config.js"
+    "test:e2e": "playwright test --config=../tests/playwright.config.js",
+    "loadtest": "node ../tests/loadtest.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.0",
