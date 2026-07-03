@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"net/http"
+	"sort"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -74,6 +76,46 @@ func NewServer(store *Store) *gin.Engine {
 			return
 		}
 		c.JSON(http.StatusOK, snap)
+	})
+
+	r.GET("/api/analytics/grafana", func(c *gin.Context) {
+		metric := c.DefaultQuery("metric", "")
+
+		snap, err := store.Snapshot(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		switch metric {
+		case "total_events":
+			c.JSON(http.StatusOK, []any{map[string]any{"value": snap.TotalEvents}})
+		case "avg_capture_time_ms":
+			c.JSON(http.StatusOK, []any{map[string]any{"value": snap.AvgCaptureTimeMs}})
+		case "avg_event_params":
+			c.JSON(http.StatusOK, []any{map[string]any{"value": snap.AvgEventParams}})
+		case "events_by_type":
+			var result []map[string]any
+			for typ, count := range snap.EventsByType {
+				result = append(result, map[string]any{"type": typ, "count": count})
+			}
+			sort.Slice(result, func(i, j int) bool {
+				return result[i]["count"].(uint64) > result[j]["count"].(uint64)
+			})
+			c.JSON(http.StatusOK, result)
+		case "events_over_time":
+			var result []map[string]any
+			for _, tb := range snap.EventsOverTime {
+				t, err := time.Parse("2006-01-02", tb.Date)
+				if err != nil {
+					continue
+				}
+				result = append(result, map[string]any{"time": t.UnixMilli(), "value": tb.Count})
+			}
+			c.JSON(http.StatusOK, result)
+		default:
+			c.JSON(http.StatusOK, []any{})
+		}
 	})
 
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))

@@ -2,7 +2,7 @@
   "title": "Pipeline & Events",
   "uid": "pipeline-events",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 3,
   "timezone": "browser",
   "panels": [
     {
@@ -11,7 +11,7 @@
       "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
       "targets": [
         {
-          "expr": "rate(clickhouse_inserts_total[1m])",
+          "expr": "rate(chdb_inserts_total[1m])",
           "legendFormat": "inserts/s"
         }
       ]
@@ -22,15 +22,15 @@
       "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, rate(clickhouse_insert_latency_seconds_bucket[1m]))",
+          "expr": "histogram_quantile(0.50, rate(chdb_insert_latency_seconds_bucket[1m]))",
           "legendFormat": "p50"
         },
         {
-          "expr": "histogram_quantile(0.90, rate(clickhouse_insert_latency_seconds_bucket[1m]))",
+          "expr": "histogram_quantile(0.90, rate(chdb_insert_latency_seconds_bucket[1m]))",
           "legendFormat": "p90"
         },
         {
-          "expr": "histogram_quantile(0.99, rate(clickhouse_insert_latency_seconds_bucket[1m]))",
+          "expr": "histogram_quantile(0.99, rate(chdb_insert_latency_seconds_bucket[1m]))",
           "legendFormat": "p99"
         }
       ]
@@ -41,7 +41,7 @@
       "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
       "targets": [
         {
-          "expr": "rate(clickhouse_insert_errors_total[1m])",
+          "expr": "rate(chdb_insert_errors_total[1m])",
           "legendFormat": "errors/s"
         }
       ]
@@ -52,7 +52,7 @@
       "gridPos": {"h": 6, "w": 6, "x": 0, "y": 8},
       "targets": [
         {
-          "expr": "clickhouse_queue_depth",
+          "expr": "chdb_queue_depth",
           "legendFormat": "queued"
         }
       ]
@@ -60,16 +60,20 @@
     {
       "title": "Events Over Time",
       "type": "timeseries",
-      "gridPos": {"h": 6, "w": 9, "x": 6, "y": 8},
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 14},
       "targets": [
         {
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "ClickHouse"
+            "type": "marcusolsson-json-datasource",
+            "uid": "PIPELINE_API"
           },
-          "rawSql": true,
-          "query": "SELECT toDate(timestamp) AS t, count() AS c FROM default.events GROUP BY t ORDER BY t",
-          "format": "time_series",
+          "method": "GET",
+          "urlPath": "",
+          "params": [["metric", "events_over_time"]],
+          "fields": [
+            {"jsonPath": "$[*].time", "name": "Time", "type": "time"},
+            {"jsonPath": "$[*].value", "name": "Events", "type": "number"}
+          ],
           "refId": "A"
         }
       ]
@@ -77,16 +81,20 @@
     {
       "title": "Events by Type",
       "type": "barchart",
-      "gridPos": {"h": 6, "w": 9, "x": 15, "y": 8},
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 14},
       "targets": [
         {
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "ClickHouse"
+            "type": "marcusolsson-json-datasource",
+            "uid": "PIPELINE_API"
           },
-          "rawSql": true,
-          "query": "SELECT type, count() AS c FROM default.events GROUP BY type ORDER BY c DESC",
-          "format": "table",
+          "method": "GET",
+          "urlPath": "",
+          "params": [["metric", "events_by_type"]],
+          "fields": [
+            {"jsonPath": "$[*].type", "name": "Type", "type": "string"},
+            {"jsonPath": "$[*].count", "name": "Count", "type": "number"}
+          ],
           "refId": "A"
         }
       ],
@@ -100,16 +108,19 @@
     {
       "title": "Total Events",
       "type": "stat",
-      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 14},
+      "gridPos": {"h": 4, "w": 8, "x": 0, "y": 20},
       "targets": [
         {
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "ClickHouse"
+            "type": "marcusolsson-json-datasource",
+            "uid": "PIPELINE_API"
           },
-          "rawSql": true,
-          "query": "SELECT count() FROM default.events",
-          "format": "table",
+          "method": "GET",
+          "urlPath": "",
+          "params": [["metric", "total_events"]],
+          "fields": [
+            {"jsonPath": "$[*].value", "name": "Events", "type": "number"}
+          ],
           "refId": "A"
         }
       ]
@@ -117,16 +128,19 @@
     {
       "title": "Avg Capture Time (ms)",
       "type": "stat",
-      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 14},
+      "gridPos": {"h": 4, "w": 8, "x": 8, "y": 20},
       "targets": [
         {
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "ClickHouse"
+            "type": "marcusolsson-json-datasource",
+            "uid": "PIPELINE_API"
           },
-          "rawSql": true,
-          "query": "SELECT round(avg(dateDiff('millisecond', timestamp, inserted_at)), 2) FROM default.events",
-          "format": "table",
+          "method": "GET",
+          "urlPath": "",
+          "params": [["metric", "avg_capture_time_ms"]],
+          "fields": [
+            {"jsonPath": "$[*].value", "name": "ms", "type": "number"}
+          ],
           "refId": "A"
         }
       ]
@@ -134,16 +148,19 @@
     {
       "title": "Avg Event Params",
       "type": "stat",
-      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 14},
+      "gridPos": {"h": 4, "w": 8, "x": 16, "y": 20},
       "targets": [
         {
           "datasource": {
-            "type": "grafana-clickhouse-datasource",
-            "uid": "ClickHouse"
+            "type": "marcusolsson-json-datasource",
+            "uid": "PIPELINE_API"
           },
-          "rawSql": true,
-          "query": "SELECT round(avg(param_count), 2) FROM default.events",
-          "format": "table",
+          "method": "GET",
+          "urlPath": "",
+          "params": [["metric", "avg_event_params"]],
+          "fields": [
+            {"jsonPath": "$[*].value", "name": "Params", "type": "number"}
+          ],
           "refId": "A"
         }
       ]

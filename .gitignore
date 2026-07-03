@@ -27,6 +27,11 @@ node_modules/
 *~
 .DS_Store
 
+# chDB local install artifacts
+chdb.h
+chdb.hpp
+libchdb.tar.gz
+
 # Deploy
 links/
 

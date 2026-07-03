@@ -2,27 +2,25 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math"
 	"math/rand"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
-	"github.com/ClickHouse/clickhouse-go/v2"
+	_ "github.com/chdb-io/chdb-go/chdb/driver"
 	"github.com/extrasalt/event-pipeline/pipeline"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 type Config struct {
-	Host          string
-	Port          string
-	Database      string
+	DataPath      string
 	Table         string
-	User          string
-	Password      string
 	BatchSize     int
 	FlushInterval time.Duration
 	MaxRetries    int
@@ -53,21 +51,17 @@ func ConfigFromEnv() Config {
 		return fallback
 	}
 	return Config{
-		Host:          getEnv("CLICKHOUSE_HOST", "localhost"),
-		Port:          getEnv("CLICKHOUSE_PORT", "9000"),
-		Database:      getEnv("CLICKHOUSE_DB", "default"),
-		Table:         getEnv("CLICKHOUSE_TABLE", "events"),
-		User:          getEnv("CLICKHOUSE_USER", ""),
-		Password:      getEnv("CLICKHOUSE_PASSWORD", ""),
-		BatchSize:     getInt("CLICKHOUSE_BATCH_SIZE", 10000),
-		FlushInterval: getDuration("CLICKHOUSE_FLUSH_INTERVAL", 1*time.Second),
-		MaxRetries:    getInt("CLICKHOUSE_MAX_RETRIES", 3),
-		QueueSize:     getInt("CLICKHOUSE_QUEUE_SIZE", 100000),
+		DataPath:      getEnv("CHDB_DATA_PATH", "/tmp/chdb"),
+		Table:         getEnv("CHDB_TABLE", "events"),
+		BatchSize:     getInt("CHDB_BATCH_SIZE", 100),
+		FlushInterval: getDuration("CHDB_FLUSH_INTERVAL", 1*time.Second),
+		MaxRetries:    getInt("CHDB_MAX_RETRIES", 3),
+		QueueSize:     getInt("CHDB_QUEUE_SIZE", 100000),
 	}
 }
 
 type Store struct {
-	conn   clickhouse.Conn
+	db     *sql.DB
 	table  string
 	events chan *TrackingEvent
 	done   chan struct{}
@@ -83,35 +77,16 @@ type Store struct {
 }
 
 func NewStore(ctx context.Context, cfg Config) (*Store, error) {
-	conn, err := clickhouse.Open(&clickhouse.Options{
-		Addr: []string{cfg.Host + ":" + cfg.Port},
-		Auth: clickhouse.Auth{
-			Database: cfg.Database,
-			Username: cfg.User,
-			Password: cfg.Password,
-		},
-		Settings: map[string]any{
-			"async_insert":              1,
-			"wait_for_async_insert":     0,
-		},
-	})
+	if err := os.MkdirAll(cfg.DataPath, 0755); err != nil {
+		return nil, fmt.Errorf("create data dir: %w", err)
+	}
+
+	db, err := sql.Open("chdb", "session="+cfg.DataPath)
 	if err != nil {
-		return nil, fmt.Errorf("clickhouse connect: %w", err)
+		return nil, fmt.Errorf("chdb open: %w", err)
 	}
-	// Retry ping with backoff to allow ClickHouse to become ready
-	var pingErr error
-	for i := range 10 {
-		if pingErr = conn.Ping(ctx); pingErr == nil {
-			break
-		}
-		if i < 9 {
-			time.Sleep(time.Duration(i+1) * time.Second)
-		}
-	}
-	if pingErr != nil {
-		return nil, fmt.Errorf("clickhouse ping: %w", pingErr)
-	}
-	if err := conn.Exec(ctx, fmt.Sprintf(`
+
+	createSQL := fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS %s (
 			id          String,
 			type        String,
@@ -127,33 +102,36 @@ func NewStore(ctx context.Context, cfg Config) (*Store, error) {
 			inserted_at DateTime DEFAULT now()
 		) ENGINE = MergeTree()
 		ORDER BY (type, timestamp)
-	`, cfg.Table)); err != nil {
-		return nil, fmt.Errorf("clickhouse migrate: %w", err)
+	`, cfg.Table)
+	if _, err := db.ExecContext(ctx, createSQL); err != nil {
+		return nil, fmt.Errorf("chdb migrate: %w", err)
 	}
 
 	s := &Store{
-		conn:          conn,
-		table:         cfg.Table,
-		events:        make(chan *TrackingEvent, cfg.QueueSize),
-		done:          make(chan struct{}),
+		db:     db,
+		table:  cfg.Table,
+		events: make(chan *TrackingEvent, cfg.QueueSize),
+		done:   make(chan struct{}),
+
 		batchSize:     cfg.BatchSize,
 		flushInterval: cfg.FlushInterval,
 		maxRetries:    cfg.MaxRetries,
+
 		inserts: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "clickhouse_inserts_total",
-			Help: "Total successful ClickHouse insert batches.",
+			Name: "chdb_inserts_total",
+			Help: "Total successful chDB insert batches.",
 		}),
 		insertErrs: promauto.NewCounter(prometheus.CounterOpts{
-			Name: "clickhouse_insert_errors_total",
-			Help: "Total ClickHouse insert batch errors after retries.",
+			Name: "chdb_insert_errors_total",
+			Help: "Total chDB insert batch errors after retries.",
 		}),
 		insertLat: promauto.NewHistogram(prometheus.HistogramOpts{
-			Name:    "clickhouse_insert_latency_seconds",
-			Help:    "Latency of ClickHouse batch inserts.",
+			Name:    "chdb_insert_latency_seconds",
+			Help:    "Latency of chDB batch inserts.",
 			Buckets: prometheus.DefBuckets,
 		}),
 		queueDepth: promauto.NewGauge(prometheus.GaugeOpts{
-			Name: "clickhouse_queue_depth",
+			Name: "chdb_queue_depth",
 			Help: "Current number of events waiting in the insert queue.",
 		}),
 	}
@@ -249,34 +227,28 @@ func backoff(attempt int) time.Duration {
 }
 
 func (s *Store) insertBatch(ctx context.Context, events []*TrackingEvent) error {
-	batch, err := s.conn.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s (id, type, timestamp, data, user_agent, ip, timezone, location, session_id, churn_prob, param_count)", s.table))
-	if err != nil {
-		return fmt.Errorf("prepare: %w", err)
-	}
-	for _, e := range events {
-		dataJSON, _ := json.Marshal(e.Data)
-		if err := batch.Append(
-			e.ID,
-			e.Type,
-			e.Timestamp,
-			string(dataJSON),
-			e.UserAgent,
-			e.IP,
-			e.Timezone,
-			e.Location,
-			e.SessionID,
-			e.ChurnProb,
-			uint32(len(e.Data)),
-		); err != nil {
-			return fmt.Errorf("append: %w", err)
+	var buf strings.Builder
+	buf.WriteString(fmt.Sprintf("INSERT INTO %s (id, type, timestamp, data, user_agent, ip, timezone, location, session_id, churn_prob, param_count) VALUES ", s.table))
+
+	args := make([]any, 0, len(events)*11)
+	for i, e := range events {
+		if i > 0 {
+			buf.WriteString(", ")
 		}
+		buf.WriteString("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		dataJSON, _ := json.Marshal(e.Data)
+		args = append(args, e.ID, e.Type, e.Timestamp, string(dataJSON),
+			e.UserAgent, e.IP, e.Timezone, e.Location,
+			e.SessionID, e.ChurnProb, uint32(len(e.Data)))
 	}
-	return batch.Send()
+
+	_, err := s.db.ExecContext(ctx, buf.String(), args...)
+	return err
 }
 
 func (s *Store) Close() {
 	<-s.done
-	s.conn.Close()
+	s.db.Close()
 }
 
 type Analytics struct {
@@ -295,12 +267,11 @@ type TimeBucket struct {
 func (s *Store) Snapshot(ctx context.Context) (Analytics, error) {
 	var a Analytics
 
-	row := s.conn.QueryRow(ctx, "SELECT count() FROM "+s.table)
-	if err := row.Scan(&a.TotalEvents); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT count() FROM "+s.table).Scan(&a.TotalEvents); err != nil {
 		return a, fmt.Errorf("count: %w", err)
 	}
 
-	rows, err := s.conn.Query(ctx, "SELECT type, count() FROM "+s.table+" GROUP BY type")
+	rows, err := s.db.QueryContext(ctx, "SELECT type, count() FROM "+s.table+" GROUP BY type")
 	if err != nil {
 		return a, fmt.Errorf("group by type: %w", err)
 	}
@@ -314,23 +285,27 @@ func (s *Store) Snapshot(ctx context.Context) (Analytics, error) {
 		}
 		a.EventsByType[typ] = cnt
 	}
+	if err := rows.Err(); err != nil {
+		return a, fmt.Errorf("rows iter: %w", err)
+	}
 
-	rows, err = s.conn.Query(ctx, "SELECT toDate(timestamp) AS d, count() FROM "+s.table+" GROUP BY d ORDER BY d")
+	rows, err = s.db.QueryContext(ctx, "SELECT toString(toDate(timestamp)) AS d, count() FROM "+s.table+" GROUP BY d ORDER BY d")
 	if err != nil {
 		return a, fmt.Errorf("events over time: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var tb TimeBucket
-		var d time.Time
-		if err := rows.Scan(&d, &tb.Count); err != nil {
+		if err := rows.Scan(&tb.Date, &tb.Count); err != nil {
 			return a, fmt.Errorf("scan time bucket: %w", err)
 		}
-		tb.Date = d.Format("2006-01-02")
 		a.EventsOverTime = append(a.EventsOverTime, tb)
 	}
+	if err := rows.Err(); err != nil {
+		return a, fmt.Errorf("rows iter: %w", err)
+	}
 
-	row = s.conn.QueryRow(ctx, "SELECT avg(dateDiff('millisecond', timestamp, inserted_at)) FROM "+s.table)
+	row := s.db.QueryRowContext(ctx, "SELECT avg(dateDiff('millisecond', timestamp, inserted_at)) FROM "+s.table)
 	var avgCapture *float64
 	if err := row.Scan(&avgCapture); err != nil {
 		return a, fmt.Errorf("avg capture: %w", err)
@@ -339,7 +314,7 @@ func (s *Store) Snapshot(ctx context.Context) (Analytics, error) {
 		a.AvgCaptureTimeMs = *avgCapture
 	}
 
-	row = s.conn.QueryRow(ctx, "SELECT avg(param_count) FROM "+s.table)
+	row = s.db.QueryRowContext(ctx, "SELECT avg(param_count) FROM "+s.table)
 	var avgParams *float64
 	if err := row.Scan(&avgParams); err != nil {
 		return a, fmt.Errorf("avg params: %w", err)

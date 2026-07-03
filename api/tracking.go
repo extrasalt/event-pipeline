@@ -47,9 +47,6 @@ var trackingPipeline = pipeline.Pipeline[*TrackingEvent]{
 			}
 			return e, nil
 		}),
-		pipeline.Filter("purchaseOnly", func(e *TrackingEvent) (bool, error) {
-			return e.Type == "purchase", nil
-		}),
 		pipeline.Deduplicate("dedup", func(e *TrackingEvent) string {
 			return e.ID
 		}, 10000),
