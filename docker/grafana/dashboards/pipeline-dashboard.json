@@ -60,14 +60,20 @@
     {
       "title": "Events Over Time",
       "type": "timeseries",
-      "gridPos": {"h": 6, "w": 9, "x": 6, "y": 8},
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 14},
       "targets": [
         {
           "datasource": {
-            "type": "grafana-json-datasource",
+            "type": "marcusolsson-json-datasource",
             "uid": "PIPELINE_API"
           },
-          "queryParams": "metric=events_over_time",
+          "method": "GET",
+          "urlPath": "",
+          "params": [["metric", "events_over_time"]],
+          "fields": [
+            {"jsonPath": "$[*].time", "name": "Time", "type": "time"},
+            {"jsonPath": "$[*].value", "name": "Events", "type": "number"}
+          ],
           "refId": "A"
         }
       ]
@@ -75,14 +81,20 @@
     {
       "title": "Events by Type",
       "type": "barchart",
-      "gridPos": {"h": 6, "w": 9, "x": 15, "y": 8},
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 14},
       "targets": [
         {
           "datasource": {
-            "type": "grafana-json-datasource",
+            "type": "marcusolsson-json-datasource",
             "uid": "PIPELINE_API"
           },
-          "queryParams": "metric=events_by_type",
+          "method": "GET",
+          "urlPath": "",
+          "params": [["metric", "events_by_type"]],
+          "fields": [
+            {"jsonPath": "$[*].type", "name": "Type", "type": "string"},
+            {"jsonPath": "$[*].count", "name": "Count", "type": "number"}
+          ],
           "refId": "A"
         }
       ],
@@ -96,14 +108,19 @@
     {
       "title": "Total Events",
       "type": "stat",
-      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 14},
+      "gridPos": {"h": 4, "w": 8, "x": 0, "y": 20},
       "targets": [
         {
           "datasource": {
-            "type": "grafana-json-datasource",
+            "type": "marcusolsson-json-datasource",
             "uid": "PIPELINE_API"
           },
-          "queryParams": "metric=total_events",
+          "method": "GET",
+          "urlPath": "",
+          "params": [["metric", "total_events"]],
+          "fields": [
+            {"jsonPath": "$[*].value", "name": "Events", "type": "number"}
+          ],
           "refId": "A"
         }
       ]
@@ -111,14 +128,19 @@
     {
       "title": "Avg Capture Time (ms)",
       "type": "stat",
-      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 14},
+      "gridPos": {"h": 4, "w": 8, "x": 8, "y": 20},
       "targets": [
         {
           "datasource": {
-            "type": "grafana-json-datasource",
+            "type": "marcusolsson-json-datasource",
             "uid": "PIPELINE_API"
           },
-          "queryParams": "metric=avg_capture_time_ms",
+          "method": "GET",
+          "urlPath": "",
+          "params": [["metric", "avg_capture_time_ms"]],
+          "fields": [
+            {"jsonPath": "$[*].value", "name": "ms", "type": "number"}
+          ],
           "refId": "A"
         }
       ]
@@ -126,14 +148,19 @@
     {
       "title": "Avg Event Params",
       "type": "stat",
-      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 14},
+      "gridPos": {"h": 4, "w": 8, "x": 16, "y": 20},
       "targets": [
         {
           "datasource": {
-            "type": "grafana-json-datasource",
+            "type": "marcusolsson-json-datasource",
             "uid": "PIPELINE_API"
           },
-          "queryParams": "metric=avg_event_params",
+          "method": "GET",
+          "urlPath": "",
+          "params": [["metric", "avg_event_params"]],
+          "fields": [
+            {"jsonPath": "$[*].value", "name": "Params", "type": "number"}
+          ],
           "refId": "A"
         }
       ]
