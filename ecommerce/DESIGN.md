@@ -141,6 +141,9 @@ ecommerce/
 - HttpOnly cookies are invisible to JS; the browser handles them automatically
 - Trade-off: requires same-origin deployment (BFF + SPA on one domain) or careful CORS + cookie configuration for cross-origin
 
+### CORS
+- The `corsMiddleware` allows only `http://localhost:5173` (Vite dev server), with credentials. In production the SPA is served same-origin by the BFF, so no CORS is needed in that mode.
+
 ### User Store
 - In-memory `map[string]User` protected by `sync.RWMutex`
 - Passwords stored in plaintext — intentional for demo scope
@@ -156,7 +159,7 @@ ecommerce/
 - Single `index.html` entry point for all routes
 
 ### BFF Serving
-- `r.Static("/app", "app/dist")` serves static assets
+- `r.Static("/app", "app/dist")` serves static assets. If the directory doesn't exist (e.g. dev mode), static serving is skipped entirely and the SPA is not served locally.
 - `NoRoute` handler serves `app/dist/index.html` for all unmatched paths — enables client-side routing with direct URL access
 - Root `/` redirects to `/app/`
 
@@ -276,9 +279,11 @@ Step 3: Review (read-only summary) → "Place Order"
 
 | Type | Scope | Tools |
 |------|-------|-------|
-| Unit | Zustand stores, utility functions (`logger`, `api`) | Vitest |
-| Integration | Page renders, form submissions, data fetching | Vitest + React Testing Library |
-| E2E | Full flows: signup → login → browse → add to cart → checkout | Playwright |
+| E2E | Full flows: signup → login → browse → add to cart → checkout; tracking events fire on all interactions | Playwright |
+
+Run via `vp run test:e2e` from `ecommerce/app/`. Tests use the BFF at `http://localhost:8080` and verify both UI behaviour and HTTP tracking events sent to the pipeline API.
+
+9 tests cover: page_view on load, page_view on SPA nav, click events, add_to_cart from grid, checkout + payment_info flow, purchase on order, lead on signup, event metadata fields, login not firing lead.
 
 Key flows to test:
 1. Signup with valid/invalid data → assert redirect on success, error on duplicate
@@ -292,15 +297,23 @@ Key flows to test:
 
 ## How to Run
 
+### Docker Compose (all services)
+
 ```sh
-# Install frontend deps
-cd ecommerce/app && pnpm install
+docker compose -f docker/docker-compose.yml up --build
+```
 
-# Build frontend
-pnpm build
+### Manual dev
 
-# Start BFF (from repo root or ecommerce/)
-cd .. && go run ./ecommerce
+```sh
+# Install + build frontend
+cd ecommerce/app && vp install && vp build
+
+# Start BFF
+cd ../.. && go run ./ecommerce
+
+# Start pipeline API (separate terminal, requires libchdb.so)
+cd api && go run ./cmd/server
 
 # Open http://localhost:8080
 ```
