@@ -1,23 +1,43 @@
 package main
 
 import (
-	_ "embed"
 	"encoding/json"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 )
 
-//go:embed products.json
-var productsJSON []byte
+var (
+	productsCache []map[string]any
+	productsOnce  sync.Once
+)
+
+func loadProducts() ([]map[string]any, error) {
+	var err error
+	productsOnce.Do(func() {
+		resp, e := http.Get("https://fakestoreapi.com/products")
+		if e != nil {
+			err = e
+			return
+		}
+		defer resp.Body.Close()
+		var products []map[string]any
+		if e := json.NewDecoder(resp.Body).Decode(&products); e != nil {
+			err = e
+			return
+		}
+		productsCache = products
+	})
+	return productsCache, err
+}
 
 func main() {
 	r := gin.Default()
-
 	r.Use(corsMiddleware())
 
 	r.GET("/health", func(c *gin.Context) {
@@ -32,7 +52,12 @@ func main() {
 
 	api := r.Group("/api")
 	api.GET("/products", func(c *gin.Context) {
-		c.Data(http.StatusOK, "application/json", productsJSON)
+		products, err := loadProducts()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load products"})
+			return
+		}
+		c.JSON(http.StatusOK, products)
 	})
 	api.GET("/products/:id", func(c *gin.Context) {
 		idStr := c.Param("id")
@@ -41,9 +66,9 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid product id"})
 			return
 		}
-		var products []map[string]any
-		if err := json.Unmarshal(productsJSON, &products); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to parse products"})
+		products, err := loadProducts()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load products"})
 			return
 		}
 		for _, p := range products {
