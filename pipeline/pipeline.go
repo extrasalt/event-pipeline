@@ -56,7 +56,16 @@ type Pipeline[T any] struct {
 // is returned along with a metadata closure. The closure must be
 // called after the output channel has been fully drained to obtain
 // accurate per-stage counters.
+//
+// Counter values are deltas from the start of this run, so repeated
+// calls to Run are safe even when stages share the same underlying
+// Core struct.
 func (p *Pipeline[T]) Run(ctx context.Context, in <-chan T) (<-chan T, func() []StageMeta) {
+	pre := make([]StageMeta, len(p.Stages))
+	for i, s := range p.Stages {
+		pre[i] = s.Meta()
+	}
+
 	out := in
 	for _, s := range p.Stages {
 		out = runStage(ctx, s, out, p.Buffer)
@@ -64,7 +73,13 @@ func (p *Pipeline[T]) Run(ctx context.Context, in <-chan T) (<-chan T, func() []
 	return out, func() []StageMeta {
 		m := make([]StageMeta, len(p.Stages))
 		for i, s := range p.Stages {
-			m[i] = s.Meta()
+			cur := s.Meta()
+			m[i] = StageMeta{
+				Name:      cur.Name,
+				Processed: cur.Processed - pre[i].Processed,
+				Errors:    cur.Errors - pre[i].Errors,
+				Dropped:   cur.Dropped - pre[i].Dropped,
+			}
 		}
 		return m
 	}
