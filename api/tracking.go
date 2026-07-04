@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/extrasalt/event-pipeline/pipeline"
@@ -50,7 +51,16 @@ var trackingPipeline = pipeline.Pipeline[*TrackingEvent]{
 		pipeline.Deduplicate("dedup", func(e *TrackingEvent) string {
 			return e.ID
 		}, 10000),
-		pipeline.ChurnEnrich[*TrackingEvent]("churnEnrich"),
+		pipeline.If("enrichIfPurchase",
+			func(e *TrackingEvent) bool { return e.Type == "purchase" },
+			func(e *TrackingEvent) (*TrackingEvent, error) {
+				e.SetChurnScore(pipeline.ChurnScore{Probability: rand.Float64(), Reason: "simulated"})
+				return e, nil
+			},
+			func(e *TrackingEvent) (*TrackingEvent, error) {
+				return e, nil
+			},
+		),
 	},
 	Buffer: 4096,
 }

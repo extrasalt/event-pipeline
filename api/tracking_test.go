@@ -104,9 +104,10 @@ func TestTrackingPipeline_NormalizeTruncation(t *testing.T) {
 
 func TestTrackingPipeline_ChurnEnrich(t *testing.T) {
 	ctx := context.Background()
-	in := make(chan *TrackingEvent, 2)
+	in := make(chan *TrackingEvent, 3)
 	in <- &TrackingEvent{ID: "1", Type: "purchase"}
 	in <- &TrackingEvent{ID: "2", Type: "page_view"}
+	in <- &TrackingEvent{ID: "3", Type: "purchase"}
 	close(in)
 
 	out, _ := trackingPipeline.Run(ctx, in)
@@ -115,13 +116,16 @@ func TestTrackingPipeline_ChurnEnrich(t *testing.T) {
 		results = append(results, e)
 	}
 
-	if len(results) != 2 {
-		t.Fatalf("expected 2 results, got %d", len(results))
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(results))
 	}
 
 	for _, e := range results {
-		if e.ChurnProb == 0 {
-			t.Fatalf("event %s should have churn probability set", e.ID)
+		if e.Type == "purchase" && e.ChurnProb == 0 {
+			t.Fatalf("purchase event %s should have churn probability set", e.ID)
+		}
+		if e.Type != "purchase" && e.ChurnProb != 0 {
+			t.Fatalf("non-purchase event %s should not have churn probability, got %f", e.ID, e.ChurnProb)
 		}
 	}
 }
