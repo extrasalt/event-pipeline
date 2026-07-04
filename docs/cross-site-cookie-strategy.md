@@ -47,13 +47,13 @@ BFF and SPA are deployed as a single unit. The BFF handles auth, serves the SPA,
 
 When the API is deployed as a standalone service (e.g., `api.mable.io`) separate from the BFF (`app.mable.io`):
 
-- The API's `POST /api/auth/login` sets a cookie with `Domain=api.mable.io; SameSite=None; Secure`
+- The API's `POST /api/auth/login` sets a cookie with `Domain=api.example.com; SameSite=None; Secure`
 - The API's `GET /api/analytics` reads the cookie
-- The tracking script sends events to `api.mable.io` without cookies
+- The tracking script sends events to `api.example.com` without cookies
 
 This requires:
 
-1. `SameSite=None; Secure` — allows the cookie to be sent cross-site from `app.mable.io` to `api.mable.io`
+1. `SameSite=None; Secure` — allows the cookie to be sent cross-site from `app.example.com` to `api.example.com`
 2. HTTPS in both places (required for `Secure` and `SameSite=None`)
 3. CORS with `Access-Control-Allow-Credentials: true` on the API's auth and analytics endpoints
 4. CSRF protection on `/api/auth/*` (e.g., `SameSite=Strict` on a separate CSRF token, or double-submit cookie pattern)
