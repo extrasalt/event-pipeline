@@ -100,6 +100,9 @@ for (let i = 0; i < TOTAL; i++) {
   });
 }
 
+console.log(`\nTarget API: ${API}`);
+console.log(`Total events: ${TOTAL}`);
+
 const stats = { purchase: 0, page_view: 0, click: 0, add_to_cart: 0, checkout: 0, payment_info: 0, lead: 0 };
 for (const e of events) { stats[e.type]++; }
 console.log("\n=== Generated Events ===");
@@ -109,6 +112,7 @@ for (const [t, c] of Object.entries(stats)) {
 
 const uniquePurchaseIds = new Set(events.filter(e => e.type === "purchase").map(e => e.id));
 console.log(`  ${"purchase (unique)".padEnd(14)} ${String(uniquePurchaseIds.size).padStart(5)} (after dedup)`);
+const expectedDedupDrops = stats.purchase - uniquePurchaseIds.size;
 
 // Send batches
 let sent = 0, processed = 0, dropped = 0;
@@ -126,10 +130,12 @@ for (let i = 0; i < events.length; i += BATCH) {
   processed += body.processed;
   dropped += body.dropped;
   for (const m of body.metadata) {
-    counts[m.Name] ??= { processed: 0, errors: 0, dropped: 0 };
+    counts[m.Name] ??= { processed: 0, errors: 0, dropped: 0, latencyNs: 0, throughput: 0 };
     counts[m.Name].processed += m.Processed;
     counts[m.Name].errors += m.Errors;
     counts[m.Name].dropped += m.Dropped;
+    counts[m.Name].latencyNs += m.LatencyNs;
+    counts[m.Name].throughput = m.Throughput;
   }
   process.stdout.write(`\r  batch ${Math.floor(i / BATCH) + 1}/${Math.ceil(events.length / BATCH)}: sent=${body.received} proc=${body.processed} drop=${body.dropped}`);
 }
@@ -172,18 +178,62 @@ console.log("\n=== Verification ===");
 const expectedUniquePurchases = Math.round(stats.purchase * (1 - DEDUP_RATIO));
 const dbTotal = analytics.total_events;
 const dbByType = analytics.events_by_type;
+let failures = 0;
 
-console.log(`  Expected unique purchases in DB: ~${expectedUniquePurchases}`);
-console.log(`  Actual events in DB:             ${dbTotal}`);
-const diff = Math.abs(dbTotal - expectedUniquePurchases);
-const pctErr = expectedUniquePurchases > 0 ? (diff / expectedUniquePurchases * 100).toFixed(1) : 0;
-console.log(`  Difference:                      ${diff} (${pctErr}% error)`);
+// 1. Pipeline metadata has the expected 4 stages
+console.log(`  Pipeline stages:                  ${Object.keys(counts).length} (expected 4)`);
+const expectedStages = ["validate", "normalize", "dedup", "enrichIfPurchase"];
+for (const name of expectedStages) {
+  if (!counts[name]) {
+    console.log(`    ✗ ${name} missing`);
+    failures++;
+  }
+}
 
-if (expectedUniquePurchases > 0) {
-  console.log(`\n  DB has only purchase events?     ${Object.keys(dbByType).length === 1 && dbByType.purchase === dbTotal ? "YES" : "NO (something unexpected)"}`);
-  console.log(`  Events over time buckets:        ${analytics.events_over_time.length}`);
-  console.log(`  Avg capture time (ms):           ${analytics.avg_capture_time_ms.toFixed(0)}`);
-  console.log(`  Avg event params:                ${analytics.avg_event_params.toFixed(2)}`);
+// 2. Dedup drops match expected
+const dedupDrops = counts.dedup?.dropped ?? 0;
+console.log(`  Dedup drops:                      ${dedupDrops} (expected ~${expectedDedupDrops})`);
+const dedupDiff = Math.abs(dedupDrops - expectedDedupDrops);
+if (dedupDiff > Math.max(1, expectedDedupDrops * 0.1)) {
+  console.log(`    ✗ dedup drop count off by ${dedupDiff}`);
+  failures++;
+}
+
+// 3. DB total events matches processed count
+console.log(`  Events in DB:                     ${dbTotal}`);
+console.log(`  Events processed:                 ${processed}`);
+if (dbTotal !== processed) {
+  console.log(`    ✗ DB total (${dbTotal}) ≠ processed (${processed})`);
+  failures++;
+}
+
+// 4. Events by type — expect all 7 types present
+const typesInDB = Object.keys(dbByType).length;
+console.log(`  Event types in DB:                ${typesInDB} (expected 7)`);
+if (typesInDB !== 7) {
+  console.log(`    ✗ expected 7 types, got ${typesInDB}`);
+  failures++;
+}
+
+// 5. Pipeline metadata latency/throughput present
+for (const name of expectedStages) {
+  const lat = counts[name]?.latencyNs ?? 0;
+  const thr = counts[name]?.throughput ?? 0;
+  if (lat === 0) {
+    console.log(`    ${name}: latency=0 — expected >0`);
+  }
+  if (thr === 0) {
+    console.log(`    ${name}: throughput=0 — expected >0`);
+  }
+}
+
+console.log(`\n  Avg capture time (ms):           ${analytics.avg_capture_time_ms.toFixed(0)}`);
+console.log(`  Avg event params:                ${analytics.avg_event_params.toFixed(2)}`);
+
+if (failures === 0) {
+  console.log("\n✅ All verifications passed!");
+} else {
+  console.log(`\n❌ ${failures} verification(s) failed`);
 }
 
 console.log("\n✅ Load test complete!");
