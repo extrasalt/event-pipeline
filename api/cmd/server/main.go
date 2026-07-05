@@ -24,10 +24,14 @@ func main() {
 	}
 
 	srv := api.NewServer(store)
-	httpServer := &http.Server{Addr: ":8081", Handler: srv}
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8081"
+	}
+	httpServer := &http.Server{Addr: ":" + port, Handler: srv}
 
 	go func() {
-		log.Println("starting API server on :8081")
+		log.Printf("starting API server on :%s", port)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server error: %v", err)
 		}
