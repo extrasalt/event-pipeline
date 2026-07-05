@@ -15,6 +15,8 @@ type TrackingEvent struct {
 	Type      string         `json:"type"`
 	Timestamp time.Time      `json:"timestamp"`
 	Data      map[string]any `json:"data"`
+	Source    string         `json:"source"`
+	Origin    string         `json:"origin"`
 	UserAgent string         `json:"user_agent"`
 	IP        string         `json:"-"`
 	Timezone  string         `json:"timezone"`

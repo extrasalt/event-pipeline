@@ -115,6 +115,8 @@ func NewStore(ctx context.Context, cfg Config) (*Store, error) {
 			type        String,
 			timestamp   DateTime64(3),
 			data        String,
+			source      String,
+			origin      String,
 			user_agent  String,
 			ip          String,
 			timezone    String,
@@ -260,18 +262,18 @@ func backoff(attempt int) time.Duration {
 
 func (s *Store) insertBatch(ctx context.Context, events []*TrackingEvent) error {
 	var buf strings.Builder
-	buf.WriteString(fmt.Sprintf("INSERT INTO %s (id, type, timestamp, data, user_agent, ip, timezone, location, session_id, churn_prob, param_count) VALUES ", s.table))
+	buf.WriteString(fmt.Sprintf("INSERT INTO %s (id, type, timestamp, data, source, origin, user_agent, ip, timezone, location, session_id, churn_prob, param_count) VALUES ", s.table))
 
-	args := make([]any, 0, len(events)*11)
+	args := make([]any, 0, len(events)*13)
 	for i, e := range events {
 		if i > 0 {
 			buf.WriteString(", ")
 		}
-		buf.WriteString("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		buf.WriteString("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 		dataJSON, _ := json.Marshal(e.Data)
 		args = append(args, e.ID, e.Type, e.Timestamp, string(dataJSON),
-			e.UserAgent, e.IP, e.Timezone, e.Location,
-			e.SessionID, e.ChurnProb, uint32(len(e.Data)))
+			e.Source, e.Origin, e.UserAgent, e.IP, e.Timezone,
+			e.Location, e.SessionID, e.ChurnProb, uint32(len(e.Data)))
 	}
 
 	_, err := s.db.ExecContext(ctx, buf.String(), args...)
@@ -286,7 +288,8 @@ func (s *Store) Close() {
 type Analytics struct {
 	TotalEvents      uint64            `json:"total_events"`
 	EventsByType     map[string]uint64 `json:"events_by_type"`
-	EventsOverTime   []TimeBucket       `json:"events_over_time"`
+	EventsBySource   map[string]uint64 `json:"events_by_source"`
+	EventsOverTime   []TimeBucket      `json:"events_over_time"`
 	AvgCaptureTimeMs float64           `json:"avg_capture_time_ms"`
 	AvgEventParams   float64           `json:"avg_event_params"`
 }
@@ -296,14 +299,21 @@ type TimeBucket struct {
 	Count uint64 `json:"count"`
 }
 
-func (s *Store) Snapshot(ctx context.Context) (Analytics, error) {
+func (s *Store) Snapshot(ctx context.Context, source string) (Analytics, error) {
 	var a Analytics
 
-	if err := s.db.QueryRowContext(ctx, "SELECT count() FROM "+s.table).Scan(&a.TotalEvents); err != nil {
+	where := ""
+	args := []any{}
+	if source != "" {
+		where = " WHERE source = ?"
+		args = append(args, source)
+	}
+
+	if err := s.db.QueryRowContext(ctx, "SELECT count() FROM "+s.table+where, args...).Scan(&a.TotalEvents); err != nil {
 		return a, fmt.Errorf("count: %w", err)
 	}
 
-	rows, err := s.db.QueryContext(ctx, "SELECT type, count() FROM "+s.table+" GROUP BY type")
+	rows, err := s.db.QueryContext(ctx, "SELECT type, count() FROM "+s.table+where+" GROUP BY type", args...)
 	if err != nil {
 		return a, fmt.Errorf("group by type: %w", err)
 	}
@@ -321,7 +331,26 @@ func (s *Store) Snapshot(ctx context.Context) (Analytics, error) {
 		return a, fmt.Errorf("rows iter: %w", err)
 	}
 
-	rows, err = s.db.QueryContext(ctx, "SELECT toString(toDate(timestamp)) AS d, count() FROM "+s.table+" GROUP BY d ORDER BY d")
+	// Always return events by source (unfiltered)
+	srcRows, err := s.db.QueryContext(ctx, "SELECT source, count() FROM "+s.table+" GROUP BY source ORDER BY source")
+	if err != nil {
+		return a, fmt.Errorf("group by source: %w", err)
+	}
+	defer srcRows.Close()
+	a.EventsBySource = make(map[string]uint64)
+	for srcRows.Next() {
+		var src string
+		var cnt uint64
+		if err := srcRows.Scan(&src, &cnt); err != nil {
+			return a, fmt.Errorf("scan source row: %w", err)
+		}
+		a.EventsBySource[src] = cnt
+	}
+	if err := srcRows.Err(); err != nil {
+		return a, fmt.Errorf("rows iter: %w", err)
+	}
+
+	rows, err = s.db.QueryContext(ctx, "SELECT toString(toDate(timestamp)) AS d, count() FROM "+s.table+where+" GROUP BY d ORDER BY d", args...)
 	if err != nil {
 		return a, fmt.Errorf("events over time: %w", err)
 	}
@@ -337,7 +366,7 @@ func (s *Store) Snapshot(ctx context.Context) (Analytics, error) {
 		return a, fmt.Errorf("rows iter: %w", err)
 	}
 
-	row := s.db.QueryRowContext(ctx, "SELECT avg(dateDiff('millisecond', timestamp, inserted_at)) FROM "+s.table)
+	row := s.db.QueryRowContext(ctx, "SELECT avg(dateDiff('millisecond', timestamp, inserted_at)) FROM "+s.table+where, args...)
 	var avgCapture *float64
 	if err := row.Scan(&avgCapture); err != nil {
 		return a, fmt.Errorf("avg capture: %w", err)
@@ -346,7 +375,7 @@ func (s *Store) Snapshot(ctx context.Context) (Analytics, error) {
 		a.AvgCaptureTimeMs = *avgCapture
 	}
 
-	row = s.db.QueryRowContext(ctx, "SELECT avg(param_count) FROM "+s.table)
+	row = s.db.QueryRowContext(ctx, "SELECT avg(param_count) FROM "+s.table+where, args...)
 	var avgParams *float64
 	if err := row.Scan(&avgParams); err != nil {
 		return a, fmt.Errorf("avg params: %w", err)

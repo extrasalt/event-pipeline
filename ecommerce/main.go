@@ -61,6 +61,10 @@ func main() {
 	if trackerAPIURL == "" {
 		trackerAPIURL = "http://localhost:8081/track/events"
 	}
+	trackerSource := os.Getenv("TRACKER_SOURCE")
+	if trackerSource == "" {
+		trackerSource = "mable-store"
+	}
 
 	dist := filepath.Join("app", "dist")
 	if info, err := os.Stat(dist); err == nil && info.IsDir() {
@@ -68,7 +72,10 @@ func main() {
 		indexBytes, err := os.ReadFile(indexPath)
 		modifiedIndex := ""
 		if err == nil {
-			trackerScript := fmt.Sprintf(`<script>window._TRACKER_API=%q</script>`, trackerAPIURL)
+			trackerScript := fmt.Sprintf(
+				`<script>window._TRACKER_API=%q;window._TRACKER_SOURCE=%q</script>`,
+				trackerAPIURL, trackerSource,
+			)
 			modifiedIndex = strings.Replace(string(indexBytes),
 				`<script src="/app/script/tracker.js"></script>`,
 				trackerScript+`<script src="/app/script/tracker.js"></script>`, 1)

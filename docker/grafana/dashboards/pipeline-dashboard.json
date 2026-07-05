@@ -2,8 +2,27 @@
   "title": "Pipeline & Events",
   "uid": "pipeline-events",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "timezone": "browser",
+  "templating": {
+    "list": [
+      {
+        "name": "source",
+        "type": "query",
+        "datasource": {
+          "type": "marcusolsson-json-datasource",
+          "uid": "PIPELINE_API"
+        },
+        "query": "?metric=events_by_source",
+        "jsonPath": "$[*].source",
+        "multi": true,
+        "includeAll": true,
+        "allValue": "",
+        "refresh": 1,
+        "label": "Source"
+      }
+    ]
+  },
   "panels": [
     {
       "title": "Insert Rate",
@@ -58,6 +77,33 @@
       ]
     },
     {
+      "title": "Events by Source",
+      "type": "barchart",
+      "gridPos": {"h": 6, "w": 18, "x": 6, "y": 8},
+      "targets": [
+        {
+          "datasource": {
+            "type": "marcusolsson-json-datasource",
+            "uid": "PIPELINE_API"
+          },
+          "method": "GET",
+          "urlPath": "",
+          "params": [["metric", "events_by_source"]],
+          "fields": [
+            {"jsonPath": "$[*].source", "name": "Source", "type": "string"},
+            {"jsonPath": "$[*].count", "name": "Count", "type": "number"}
+          ],
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {"axisBorderShow": false}
+        }
+      }
+    },
+    {
       "title": "Events Over Time",
       "type": "timeseries",
       "gridPos": {"h": 6, "w": 12, "x": 0, "y": 14},
@@ -69,7 +115,7 @@
           },
           "method": "GET",
           "urlPath": "",
-          "params": [["metric", "events_over_time"]],
+          "params": [["metric", "events_over_time"], ["source", "$source"]],
           "fields": [
             {"jsonPath": "$[*].time", "name": "Time", "type": "time"},
             {"jsonPath": "$[*].value", "name": "Events", "type": "number"}
@@ -90,7 +136,7 @@
           },
           "method": "GET",
           "urlPath": "",
-          "params": [["metric", "events_by_type"]],
+          "params": [["metric", "events_by_type"], ["source", "$source"]],
           "fields": [
             {"jsonPath": "$[*].type", "name": "Type", "type": "string"},
             {"jsonPath": "$[*].count", "name": "Count", "type": "number"}
@@ -117,7 +163,7 @@
           },
           "method": "GET",
           "urlPath": "",
-          "params": [["metric", "total_events"]],
+          "params": [["metric", "total_events"], ["source", "$source"]],
           "fields": [
             {"jsonPath": "$[*].value", "name": "Events", "type": "number"}
           ],
@@ -137,7 +183,7 @@
           },
           "method": "GET",
           "urlPath": "",
-          "params": [["metric", "avg_capture_time_ms"]],
+          "params": [["metric", "avg_capture_time_ms"], ["source", "$source"]],
           "fields": [
             {"jsonPath": "$[*].value", "name": "ms", "type": "number"}
           ],
@@ -157,7 +203,7 @@
           },
           "method": "GET",
           "urlPath": "",
-          "params": [["metric", "avg_event_params"]],
+          "params": [["metric", "avg_event_params"], ["source", "$source"]],
           "fields": [
             {"jsonPath": "$[*].value", "name": "Params", "type": "number"}
           ],

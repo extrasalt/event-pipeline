@@ -6,6 +6,8 @@
   var API_URL =
     window._TRACKER_API || "http://localhost:8081/track/events";
 
+  var SOURCE = window._TRACKER_SOURCE || "unknown";
+
   var SID =
     sessionStorage.getItem("_tsid") ||
     (function () {
@@ -32,6 +34,8 @@
       type: type,
       timestamp: now(),
       data: data || {},
+      source: SOURCE,
+      origin: window.location.origin,
       user_agent: navigator.userAgent,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       location: window.location.hostname,

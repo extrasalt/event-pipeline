@@ -43,8 +43,15 @@ func NewServer(store *Store) *gin.Engine {
 		}
 
 		clientIP := c.ClientIP()
+		requestOrigin := c.GetHeader("Origin")
 		for _, e := range events {
 			e.IP = clientIP
+			if e.Source == "" {
+				e.Source = "unknown"
+			}
+			if requestOrigin != "" {
+				e.Origin = requestOrigin
+			}
 		}
 
 		processed, meta, err := store.ProcessEvents(context.Background(), events)
@@ -70,7 +77,8 @@ func NewServer(store *Store) *gin.Engine {
 	}
 
 	r.GET("/api/analytics", authMiddleware(), func(c *gin.Context) {
-		snap, err := store.Snapshot(c.Request.Context())
+		source := c.DefaultQuery("source", "")
+		snap, err := store.Snapshot(c.Request.Context(), source)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -80,8 +88,9 @@ func NewServer(store *Store) *gin.Engine {
 
 	r.GET("/api/analytics/grafana", func(c *gin.Context) {
 		metric := c.DefaultQuery("metric", "")
+		source := c.DefaultQuery("source", "")
 
-		snap, err := store.Snapshot(c.Request.Context())
+		snap, err := store.Snapshot(c.Request.Context(), source)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -94,6 +103,15 @@ func NewServer(store *Store) *gin.Engine {
 			c.JSON(http.StatusOK, []any{map[string]any{"value": snap.AvgCaptureTimeMs}})
 		case "avg_event_params":
 			c.JSON(http.StatusOK, []any{map[string]any{"value": snap.AvgEventParams}})
+		case "events_by_source":
+			var result []map[string]any
+			for src, count := range snap.EventsBySource {
+				result = append(result, map[string]any{"source": src, "count": count})
+			}
+			sort.Slice(result, func(i, j int) bool {
+				return result[i]["count"].(uint64) > result[j]["count"].(uint64)
+			})
+			c.JSON(http.StatusOK, result)
 		case "events_by_type":
 			var result []map[string]any
 			for typ, count := range snap.EventsByType {

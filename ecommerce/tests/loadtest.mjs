@@ -91,6 +91,8 @@ for (let i = 0; i < TOTAL; i++) {
     id,
     type,
     timestamp: new Date(Date.now() - randInt(0, 7 * 86400000)).toISOString(),
+    source: "loadtest",
+    origin: "https://loadtest.example.com",
     session_id: crypto.randomUUID(),
     user_agent: "LoadTest/1.0",
     timezone: pick(TIMEZONES),
