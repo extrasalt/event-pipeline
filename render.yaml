@@ -10,5 +10,7 @@ services:
         value: 8080
       - key: JWT_SECRET
         generateValue: true
+      - key: TRACKER_API_URL
+        value: https://eventpipeline-store-production.up.railway.app/track/events
     healthCheckPath: /health
     autoDeploy: false

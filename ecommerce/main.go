@@ -3,11 +3,13 @@ package main
 import (
 	"encoding/json"
 	_ "embed"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -55,14 +57,46 @@ func main() {
 		c.JSON(http.StatusNotFound, gin.H{"error": "product not found"})
 	})
 
+	trackerAPIURL := os.Getenv("TRACKER_API_URL")
+	if trackerAPIURL == "" {
+		trackerAPIURL = "http://localhost:8081/track/events"
+	}
+
 	dist := filepath.Join("app", "dist")
 	if info, err := os.Stat(dist); err == nil && info.IsDir() {
-		r.Static("/app", dist)
+		indexPath := filepath.Join(dist, "index.html")
+		indexBytes, err := os.ReadFile(indexPath)
+		modifiedIndex := ""
+		if err == nil {
+			trackerScript := fmt.Sprintf(`<script>window._TRACKER_API=%q</script>`, trackerAPIURL)
+			modifiedIndex = strings.Replace(string(indexBytes),
+				`<script src="/app/script/tracker.js"></script>`,
+				trackerScript+`<script src="/app/script/tracker.js"></script>`, 1)
+		}
+
+		httpFS := http.FileServer(http.Dir(dist))
+		handler := func(c *gin.Context) {
+			filePath := c.Param("filepath")
+			if filePath == "" || filePath == "/" || filePath == "/index.html" {
+				c.Header("Content-Type", "text/html; charset=utf-8")
+				c.String(http.StatusOK, modifiedIndex)
+				return
+			}
+			c.Request.URL.Path = filePath
+			httpFS.ServeHTTP(c.Writer, c.Request)
+		}
+
+		r.GET("/app/*filepath", handler)
+		r.HEAD("/app/*filepath", handler)
+		r.GET("/app", func(c *gin.Context) {
+			c.Redirect(http.StatusMovedPermanently, "/app/")
+		})
 		r.GET("/", func(c *gin.Context) {
 			c.Redirect(http.StatusMovedPermanently, "/app/")
 		})
 		r.NoRoute(func(c *gin.Context) {
-			c.File(filepath.Join(dist, "index.html"))
+			c.Header("Content-Type", "text/html; charset=utf-8")
+			c.String(http.StatusOK, modifiedIndex)
 		})
 	}
 
