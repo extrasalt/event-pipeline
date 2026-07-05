@@ -1,6 +1,9 @@
 package pipeline
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Generate creates a GenerateStage that produces items via emit.
 func Generate[T any](name string, fn func(ctx context.Context, emit func(T))) *GenerateStage[T] {
@@ -14,6 +17,11 @@ type GenerateStage[T any] struct {
 }
 
 func (s *GenerateStage[T]) Process(ctx context.Context, in <-chan T, out chan<- T) {
+	start := time.Now()
+	defer func() {
+		s.LatencyNs.Add(time.Since(start).Nanoseconds())
+	}()
+
 	s.Fn(ctx, func(v T) {
 		select {
 		case out <- v:

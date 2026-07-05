@@ -18,6 +18,29 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+var (
+	pipelineProcessed = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pipeline_stage_processed_total",
+		Help: "Total items processed by pipeline stage.",
+	}, []string{"stage"})
+	pipelineErrors = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pipeline_stage_errors_total",
+		Help: "Total errors by pipeline stage.",
+	}, []string{"stage"})
+	pipelineDropped = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "pipeline_stage_dropped_total",
+		Help: "Total items dropped by pipeline stage.",
+	}, []string{"stage"})
+	pipelineLatency = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "pipeline_stage_latency_seconds",
+		Help: "Latest per-stage pipeline processing latency in seconds.",
+	}, []string{"stage"})
+	pipelineThroughput = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "pipeline_stage_throughput",
+		Help: "Latest per-stage pipeline throughput (items/sec).",
+	}, []string{"stage"})
+)
+
 type Config struct {
 	DataPath      string
 	Table         string
@@ -155,6 +178,15 @@ func (s *Store) ProcessEvents(ctx context.Context, events []*TrackingEvent) ([]*
 		processed = append(processed, e)
 	}
 
+	meta := collectMeta()
+	for _, m := range meta {
+		pipelineProcessed.WithLabelValues(m.Name).Add(float64(m.Processed))
+		pipelineErrors.WithLabelValues(m.Name).Add(float64(m.Errors))
+		pipelineDropped.WithLabelValues(m.Name).Add(float64(m.Dropped))
+		pipelineLatency.WithLabelValues(m.Name).Set(float64(m.LatencyNs) / 1e9)
+		pipelineThroughput.WithLabelValues(m.Name).Set(m.Throughput)
+	}
+
 	for _, e := range processed {
 		select {
 		case s.events <- e:
@@ -165,7 +197,7 @@ func (s *Store) ProcessEvents(ctx context.Context, events []*TrackingEvent) ([]*
 	}
 	s.queueDepth.Set(float64(len(s.events)))
 
-	return processed, collectMeta(), nil
+	return processed, meta, nil
 }
 
 func (s *Store) run(ctx context.Context) {

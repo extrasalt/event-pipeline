@@ -23,10 +23,13 @@ import "context"
 
 // StageMeta holds per-stage counters collected after a pipeline run.
 type StageMeta struct {
-	Name      string
-	Processed int64
-	Errors    int64
-	Dropped   int64
+	Name       string
+	Processed  int64
+	Errors     int64
+	Dropped    int64
+	BatchSize  int64   // configured batch limit (0 = N/A)
+	LatencyNs  int64   // total nanoseconds spent transforming items
+	Throughput float64 // items / second (computed from Processed / LatencyNs)
 }
 
 // Stage is the interface every pipeline stage must implement.
@@ -79,6 +82,11 @@ func (p *Pipeline[T]) Run(ctx context.Context, in <-chan T) (<-chan T, func() []
 				Processed: cur.Processed - pre[i].Processed,
 				Errors:    cur.Errors - pre[i].Errors,
 				Dropped:   cur.Dropped - pre[i].Dropped,
+				BatchSize: cur.BatchSize,
+				LatencyNs: cur.LatencyNs - pre[i].LatencyNs,
+			}
+			if m[i].LatencyNs > 0 {
+				m[i].Throughput = float64(m[i].Processed) / (float64(m[i].LatencyNs) / 1e9)
 			}
 		}
 		return m

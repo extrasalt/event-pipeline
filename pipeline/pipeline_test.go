@@ -243,6 +243,89 @@ func TestPipelineMultiStage(t *testing.T) {
 	}
 }
 
+func TestReduceStage(t *testing.T) {
+	ctx := context.Background()
+	in := make(chan int, 5)
+	for i := 1; i <= 5; i++ {
+		in <- i
+	}
+	close(in)
+
+	p := Pipeline[int]{
+		Stages: []Stage[int]{ReduceStage("sum", func(a, b int) (int, error) { return a + b, nil })},
+		Buffer: 4,
+	}
+	out, _ := p.Run(ctx, in)
+
+	var got []int
+	for v := range out {
+		got = append(got, v)
+	}
+	if len(got) != 1 || got[0] != 15 {
+		t.Fatalf("expected [15], got %v", got)
+	}
+}
+
+func TestPipelineFilterReduce(t *testing.T) {
+	ctx := context.Background()
+	in := make(chan int, 10)
+	for i := 1; i <= 10; i++ {
+		in <- i
+	}
+	close(in)
+
+	p := Pipeline[int]{
+		Stages: []Stage[int]{
+			Filter("even", func(x int) (bool, error) { return x%2 == 0, nil }),
+			ReduceStage("sum", func(a, b int) (int, error) { return a + b, nil }),
+		},
+		Buffer: 8,
+	}
+	out, meta := p.Run(ctx, in)
+
+	var got []int
+	for v := range out {
+		got = append(got, v)
+	}
+	if len(got) != 1 || got[0] != 30 {
+		t.Fatalf("expected [30], got %v", got)
+	}
+	m := meta()
+	if len(m) != 2 {
+		t.Fatalf("expected 2 stage metas, got %d", len(m))
+	}
+	if m[0].Name != "even" || m[0].Processed != 5 || m[0].Dropped != 5 {
+		t.Fatalf("bad filter meta: %+v", m[0])
+	}
+	if m[1].Name != "sum" || m[1].Processed != 1 {
+		t.Fatalf("bad reduce meta: %+v", m[1])
+	}
+}
+
+func TestStageMeta_LatencyAndThroughput(t *testing.T) {
+	ctx := context.Background()
+	in := make(chan int, 10)
+	for i := 0; i < 10; i++ {
+		in <- i
+	}
+	close(in)
+
+	p := Pipeline[int]{
+		Stages: []Stage[int]{Map("double", func(x int) (int, error) { return x * 2, nil })},
+		Buffer: 4,
+	}
+	out, collectMeta := p.Run(ctx, in)
+	for range out {
+	}
+	m := collectMeta()
+	if m[0].LatencyNs <= 0 {
+		t.Fatalf("expected positive latency, got %d", m[0].LatencyNs)
+	}
+	if m[0].Throughput <= 0 {
+		t.Fatalf("expected positive throughput, got %f", m[0].Throughput)
+	}
+}
+
 func TestFanOut(t *testing.T) {
 	ctx := context.Background()
 	in := make(chan int, 100)

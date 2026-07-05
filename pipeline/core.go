@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"sync/atomic"
+	"time"
 )
 
 // Core is an embedded helper that provides atomic counters and a
@@ -10,14 +11,30 @@ import (
 // process items one-by-one should embed Core and call runCore.
 type Core struct {
 	Name      string
+	BatchSize int64 // configured batch limit (0 = N/A for single-item stages)
 	Processed atomic.Int64
 	Errors    atomic.Int64
 	Dropped   atomic.Int64
+	LatencyNs atomic.Int64 // total nanoseconds spent transforming items
 }
 
 // Meta returns a StageMeta snapshot of the current counters.
 func (c *Core) Meta() StageMeta {
-	return StageMeta{Name: c.Name, Processed: c.Processed.Load(), Errors: c.Errors.Load(), Dropped: c.Dropped.Load()}
+	ns := c.LatencyNs.Load()
+	processed := c.Processed.Load()
+	var throughput float64
+	if ns > 0 {
+		throughput = float64(processed) / (float64(ns) / 1e9)
+	}
+	return StageMeta{
+		Name:       c.Name,
+		Processed:  processed,
+		Errors:     c.Errors.Load(),
+		Dropped:    c.Dropped.Load(),
+		BatchSize:  c.BatchSize,
+		LatencyNs:  ns,
+		Throughput: throughput,
+	}
 }
 
 // runCore drives the standard read-process-send loop that most stages
@@ -35,7 +52,9 @@ func runCore[T any](c *Core, ctx context.Context, in <-chan T, out chan<- T, fn 
 			if !ok {
 				return
 			}
+			start := time.Now()
 			r, keep, err := fn(v)
+			c.LatencyNs.Add(time.Since(start).Nanoseconds())
 			if err != nil {
 				c.Errors.Add(1)
 				continue

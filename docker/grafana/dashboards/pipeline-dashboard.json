@@ -164,6 +164,39 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "title": "Pipeline Processing Rate",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+      "targets": [
+        {
+          "expr": "rate(pipeline_stage_processed_total[1m])",
+          "legendFormat": "{{stage}}"
+        }
+      ]
+    },
+    {
+      "title": "Pipeline Latency (per stage)",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 32},
+      "targets": [
+        {
+          "expr": "pipeline_stage_latency_seconds",
+          "legendFormat": "{{stage}}"
+        }
+      ]
+    },
+    {
+      "title": "Pipeline Throughput (per stage)",
+      "type": "stat",
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 32},
+      "targets": [
+        {
+          "expr": "pipeline_stage_throughput",
+          "legendFormat": "{{stage}}"
+        }
+      ]
     }
   ]
 }
